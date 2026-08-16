@@ -25,9 +25,13 @@ class CaptureJob
         private readonly Dispatcher $dispatcher,
     ) {}
 
+    /** @var array<string, int> */
+    private array $startedMemory = [];
+
     public function processing(JobProcessing $event): void
     {
         $this->startedAt[$event->job->getJobId()] = microtime(true);
+        $this->startedMemory[$event->job->getJobId()] = memory_get_usage(true);
     }
 
     public function processed(JobProcessed $event): void
@@ -42,8 +46,10 @@ class CaptureJob
 
     private function record(Job $job, string $status, ?Throwable $exception = null): void
     {
-        $start = $this->startedAt[$job->getJobId()] ?? microtime(true);
-        unset($this->startedAt[$job->getJobId()]);
+        $jobId = $job->getJobId();
+        $start = $this->startedAt[$jobId] ?? microtime(true);
+        $startMemory = $this->startedMemory[$jobId] ?? memory_get_usage(true);
+        unset($this->startedAt[$jobId], $this->startedMemory[$jobId]);
 
         $payload = [
             'name' => $job->resolveName(),
@@ -52,6 +58,11 @@ class CaptureJob
             'status' => $status,
             'duration_ms' => (int) round((microtime(true) - $start) * 1000),
             'attempts' => $job->attempts(),
+            // A worker process handles many jobs back to back, so a plain
+            // memory_get_peak_usage() would just be the worst peak across
+            // *all* jobs so far, not this one — the delta since this job
+            // started is what's actually attributable to it.
+            'memory_mb' => round((memory_get_usage(true) - $startMemory) / 1024 / 1024, 2),
         ];
 
         if ($exception !== null) {

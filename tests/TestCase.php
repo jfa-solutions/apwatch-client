@@ -3,6 +3,8 @@
 namespace Apwatch\Client\Tests;
 
 use Apwatch\Client\ApwatchServiceProvider;
+use Illuminate\Console\Scheduling\CacheEventMutex;
+use Illuminate\Console\Scheduling\EventMutex;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
@@ -26,9 +28,13 @@ abstract class TestCase extends BaseTestCase
 
         $app['config']->set('mail.default', 'array');
 
+        // Not auto-bound by Testbench's minimal app — needed to construct
+        // a Illuminate\Console\Scheduling\CallbackEvent directly in tests.
+        $app->bind(EventMutex::class, CacheEventMutex::class);
+
         // Opt-in capture types default to false in the shipped config, but
         // the whole suite exercises them, so turn them all on here.
-        foreach (['queries', 'jobs', 'mails', 'http_clients', 'events'] as $flag) {
+        foreach (['queries', 'jobs', 'mails', 'http_clients', 'events', 'commands', 'schedule'] as $flag) {
             $app['config']->set("apwatch.capture.{$flag}", true);
         }
     }

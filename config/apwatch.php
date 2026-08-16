@@ -23,6 +23,8 @@ return [
         'mails' => env('APWATCH_MAILS', false),
         'http_clients' => env('APWATCH_HTTP_CLIENTS', false),
         'events' => env('APWATCH_EVENTS', false),
+        'commands' => env('APWATCH_COMMANDS', false),
+        'schedule' => env('APWATCH_SCHEDULE', false),
 
         // Separate from 'requests': ip/user_agent/memory are captured
         // whenever requests are, but headers are opt-in on their own —

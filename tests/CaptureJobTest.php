@@ -28,7 +28,8 @@ it('captures processed jobs and flushes immediately, without waiting for defer()
         expect($jobEvents)->toHaveCount(1)
             ->and($jobEvents[0]['payload']['name'])->toBe(ApwatchTestJob::class)
             ->and($jobEvents[0]['payload']['status'])->toBe('processed')
-            ->and($jobEvents[0]['payload']['duration_ms'])->toBeInt();
+            ->and($jobEvents[0]['payload']['duration_ms'])->toBeInt()
+            ->and($jobEvents[0]['payload']['memory_mb'])->toBeFloat();
 
         return true;
     });

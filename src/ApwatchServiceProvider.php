@@ -2,6 +2,7 @@
 
 namespace Apwatch\Client;
 
+use Apwatch\Client\Listeners\CaptureCommand;
 use Apwatch\Client\Listeners\CaptureEvent;
 use Apwatch\Client\Listeners\CaptureException;
 use Apwatch\Client\Listeners\CaptureHttpClient;
@@ -10,6 +11,12 @@ use Apwatch\Client\Listeners\CaptureLog;
 use Apwatch\Client\Listeners\CaptureMail;
 use Apwatch\Client\Listeners\CaptureQuery;
 use Apwatch\Client\Listeners\CaptureRequest;
+use Apwatch\Client\Listeners\CaptureSchedule;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Console\Events\ScheduledTaskFinished;
+use Illuminate\Console\Events\ScheduledTaskStarting;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Database\Events\QueryExecuted;
@@ -83,6 +90,19 @@ class ApwatchServiceProvider extends ServiceProvider
             $this->app['events']->listen(JobProcessing::class, [$captureJob, 'processing']);
             $this->app['events']->listen(JobProcessed::class, [$captureJob, 'processed']);
             $this->app['events']->listen(JobFailed::class, [$captureJob, 'failed']);
+        }
+
+        if (config('apwatch.capture.commands')) {
+            $captureCommand = $this->app->make(CaptureCommand::class);
+            $this->app['events']->listen(CommandStarting::class, [$captureCommand, 'starting']);
+            $this->app['events']->listen(CommandFinished::class, [$captureCommand, 'finished']);
+        }
+
+        if (config('apwatch.capture.schedule')) {
+            $captureSchedule = $this->app->make(CaptureSchedule::class);
+            $this->app['events']->listen(ScheduledTaskStarting::class, [$captureSchedule, 'starting']);
+            $this->app['events']->listen(ScheduledTaskFinished::class, [$captureSchedule, 'finished']);
+            $this->app['events']->listen(ScheduledTaskFailed::class, [$captureSchedule, 'failed']);
         }
 
         // `always: true` because deferred callbacks are skipped by default on
