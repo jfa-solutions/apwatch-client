@@ -14,7 +14,10 @@ use Throwable;
  */
 class Dispatcher
 {
-    public function __construct(private readonly EventBuffer $buffer) {}
+    public function __construct(
+        private readonly EventBuffer $buffer,
+        private readonly UserContext $users,
+    ) {}
 
     public function flush(): void
     {
@@ -38,12 +41,35 @@ class Dispatcher
                 ->connectTimeout((int) config('apwatch.http.connect_timeout'))
                 ->timeout((int) config('apwatch.http.timeout'))
                 ->post(rtrim($endpoint, '/').'/api/ingest', [
-                    'events' => $this->buffer->all(),
+                    'events' => $this->withUser($this->buffer->all()),
                 ]);
         } catch (Throwable) {
             // Swallow: a monitoring outage must never surface to the host app.
         } finally {
             $this->buffer->clear();
+            $this->users->clear();
         }
+    }
+
+    /**
+     * Stamps the request's authenticated user onto every event in the batch.
+     * A queue worker has no such user, so this is a no-op there.
+     *
+     * @param  array<int, array{type: string, occurred_at: string, payload: array<string, mixed>}>  $events
+     * @return array<int, array{type: string, occurred_at: string, payload: array<string, mixed>}>
+     */
+    private function withUser(array $events): array
+    {
+        $user = $this->users->get();
+
+        if ($user === null) {
+            return $events;
+        }
+
+        return array_map(function (array $event) use ($user): array {
+            $event['payload']['user'] = $user;
+
+            return $event;
+        }, $events);
     }
 }

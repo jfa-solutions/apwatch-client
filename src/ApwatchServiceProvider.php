@@ -36,6 +36,7 @@ class ApwatchServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/apwatch.php', 'apwatch');
 
         $this->app->singleton(EventBuffer::class);
+        $this->app->singleton(UserContext::class);
         $this->app->singleton(Dispatcher::class);
     }
 
