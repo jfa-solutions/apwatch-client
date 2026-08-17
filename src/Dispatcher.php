@@ -17,6 +17,7 @@ class Dispatcher
     public function __construct(
         private readonly EventBuffer $buffer,
         private readonly UserContext $users,
+        private readonly TraceContext $trace,
     ) {}
 
     public function flush(): void
@@ -41,33 +42,45 @@ class Dispatcher
                 ->connectTimeout((int) config('apwatch.http.connect_timeout'))
                 ->timeout((int) config('apwatch.http.timeout'))
                 ->post(rtrim($endpoint, '/').'/api/ingest', [
-                    'events' => $this->withUser($this->buffer->all()),
+                    'events' => $this->withContext($this->buffer->all()),
                 ]);
         } catch (Throwable) {
             // Swallow: a monitoring outage must never surface to the host app.
         } finally {
             $this->buffer->clear();
             $this->users->clear();
+            $this->trace->clear();
         }
     }
 
     /**
-     * Stamps the request's authenticated user onto every event in the batch.
-     * A queue worker has no such user, so this is a no-op there.
+     * Stamps request-wide context onto every event in the batch: the
+     * authenticated user (a queue worker has none, so that part is a no-op
+     * there) and the trace that ties this unit of work together.
      *
-     * @param  array<int, array{type: string, occurred_at: string, payload: array<string, mixed>}>  $events
-     * @return array<int, array{type: string, occurred_at: string, payload: array<string, mixed>}>
+     * Trace ids ride alongside the payload rather than inside it — they
+     * describe the event, whereas the payload is whatever the host app's
+     * own request/query/job looked like.
+     *
+     * @param  array<int, array{id: string, type: string, occurred_at: string, payload: array<string, mixed>}>  $events
+     * @return array<int, array<string, mixed>>
      */
-    private function withUser(array $events): array
+    private function withContext(array $events): array
     {
         $user = $this->users->get();
+        $traceId = $this->trace->id();
+        $parentTraceId = $this->trace->parentId();
 
-        if ($user === null) {
-            return $events;
-        }
+        return array_map(function (array $event) use ($user, $traceId, $parentTraceId): array {
+            $event['trace_id'] = $traceId;
 
-        return array_map(function (array $event) use ($user): array {
-            $event['payload']['user'] = $user;
+            if ($parentTraceId !== null) {
+                $event['parent_trace_id'] = $parentTraceId;
+            }
+
+            if ($user !== null) {
+                $event['payload']['user'] = $user;
+            }
 
             return $event;
         }, $events);

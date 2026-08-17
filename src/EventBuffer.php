@@ -4,6 +4,7 @@ namespace Apwatch\Client;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use Illuminate\Support\Str;
 
 /**
  * Accumulates events during a single request lifecycle. Bound as a
@@ -12,7 +13,7 @@ use DateTimeInterface;
  */
 class EventBuffer
 {
-    /** @var array<int, array{type: string, occurred_at: string, payload: array<string, mixed>}> */
+    /** @var array<int, array{id: string, type: string, occurred_at: string, payload: array<string, mixed>}> */
     private array $events = [];
 
     /**
@@ -21,6 +22,11 @@ class EventBuffer
     public function push(string $type, array $payload, ?DateTimeInterface $occurredAt = null): void
     {
         $this->events[] = [
+            // Minted here rather than server-side so the dashboard has a
+            // stable, linkable address for a single event — occurred_at is
+            // not unique enough (a request can log twice in the same
+            // millisecond).
+            'id' => (string) Str::uuid(),
             'type' => $type,
             'occurred_at' => ($occurredAt ?? new DateTimeImmutable)->format(DateTimeInterface::ATOM),
             'payload' => $payload,
@@ -38,7 +44,7 @@ class EventBuffer
     }
 
     /**
-     * @return array<int, array{type: string, occurred_at: string, payload: array<string, mixed>}>
+     * @return array<int, array{id: string, type: string, occurred_at: string, payload: array<string, mixed>}>
      */
     public function all(): array
     {

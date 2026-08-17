@@ -4,6 +4,7 @@ namespace Apwatch\Client\Listeners;
 
 use Apwatch\Client\Dispatcher;
 use Apwatch\Client\EventBuffer;
+use Apwatch\Client\TraceContext;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
@@ -23,6 +24,7 @@ class CaptureJob
     public function __construct(
         private readonly EventBuffer $buffer,
         private readonly Dispatcher $dispatcher,
+        private readonly TraceContext $trace,
     ) {}
 
     /** @var array<string, int> */
@@ -30,8 +32,30 @@ class CaptureJob
 
     public function processing(JobProcessing $event): void
     {
+        // A worker handles many jobs in one process, so each one opens its
+        // own trace instead of inheriting whatever the previous job left in
+        // the singleton — parented to the request that dispatched it, which
+        // the provider stamped onto the queue payload.
+        $this->trace->restart($this->dispatchedFrom($event->job));
+
         $this->startedAt[$event->job->getJobId()] = microtime(true);
         $this->startedMemory[$event->job->getJobId()] = memory_get_usage(true);
+    }
+
+    /**
+     * The trace of whatever queued this job, or null when it was queued by
+     * something that had no apwatch client (an older release, another app,
+     * or a job pushed straight onto the connection).
+     */
+    private function dispatchedFrom(Job $job): ?string
+    {
+        if (! method_exists($job, 'payload')) {
+            return null;
+        }
+
+        $traceId = $job->payload()['apwatch_trace_id'] ?? null;
+
+        return is_string($traceId) ? $traceId : null;
     }
 
     public function processed(JobProcessed $event): void

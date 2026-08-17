@@ -37,6 +37,15 @@ return [
         // leaving this on still captures nothing for healthy traffic.
         'request_input' => env('APWATCH_REQUEST_INPUT', true),
 
+        // What the app answered with. Gated a second time by response
+        // status (see 'response' below).
+        'request_response' => env('APWATCH_REQUEST_RESPONSE', true),
+
+        // Request + response bodies and headers of outgoing Http::* calls.
+        // Only consulted when 'http_clients' is on; the response half is
+        // gated again by status (see 'response' below).
+        'http_client_body' => env('APWATCH_HTTP_CLIENT_BODY', true),
+
         // Who was authenticated when the event happened. Attached to every
         // event captured during a request, not just the request row, so a
         // query or exception can be traced back to a user too.
@@ -58,16 +67,35 @@ return [
         // 'max_length', it is replaced by a marker rather than stored half.
         'max_length' => env('APWATCH_INPUT_MAX_LENGTH', 16384),
         'max_value_length' => env('APWATCH_INPUT_MAX_VALUE_LENGTH', 1024),
+    ],
 
-        // Matched case-insensitively against key names, at any nesting
-        // depth. A key whose name merely contains one of these counts as a
-        // match, so 'senha' covers 'senha_atual' and 'confirmar_senha'.
-        'redact' => [
-            'password', 'senha', 'secret', 'token', 'authorization', 'api_key',
-            'access_token', 'refresh_token', 'client_secret', 'private_key',
-            'credit_card', 'cartao', 'card_number', 'cvv', 'cvc',
-            'cpf', 'cnpj', 'rg',
-        ],
+    // Response body capture, for both the app's own responses and outgoing
+    // Http::* calls. Unlike request input this defaults to every status:
+    // seeing what an API actually answered on a 200 is usually the whole
+    // reason you opened the event. The size cap is what keeps that
+    // affordable, so lower it before narrowing the statuses.
+    'response' => [
+        // Same syntax as 'request_input.statuses' — classes ('5xx'), exact
+        // codes ('422'), or the literal 'all'. Empty disables capture.
+        'statuses' => env('APWATCH_RESPONSE_STATUSES', 'all'),
+
+        // Bodies over this are replaced by a "not stored, N bytes" marker
+        // rather than truncated: half a JSON document is not something you
+        // can read, and it would still cost the row.
+        'max_length' => env('APWATCH_RESPONSE_MAX_LENGTH', 8192),
+        'max_value_length' => env('APWATCH_RESPONSE_MAX_VALUE_LENGTH', 1024),
+    ],
+
+    // Keys whose values are masked wherever they appear — request input,
+    // response bodies, and outgoing http client bodies alike. Matched
+    // case-insensitively at any nesting depth; a key whose name merely
+    // contains one of these counts as a match, so 'senha' covers
+    // 'senha_atual' and 'confirmar_senha'.
+    'redact' => [
+        'password', 'senha', 'secret', 'token', 'authorization', 'api_key',
+        'access_token', 'refresh_token', 'client_secret', 'private_key',
+        'credit_card', 'cartao', 'card_number', 'cvv', 'cvc',
+        'cpf', 'cnpj', 'rg',
     ],
 
     // Which guard to read the authenticated user from. Null uses whatever

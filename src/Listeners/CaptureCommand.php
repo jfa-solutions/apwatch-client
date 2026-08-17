@@ -4,6 +4,7 @@ namespace Apwatch\Client\Listeners;
 
 use Apwatch\Client\Dispatcher;
 use Apwatch\Client\EventBuffer;
+use Apwatch\Client\TraceContext;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 
@@ -21,10 +22,15 @@ class CaptureCommand
     public function __construct(
         private readonly EventBuffer $buffer,
         private readonly Dispatcher $dispatcher,
+        private readonly TraceContext $trace,
     ) {}
 
     public function starting(CommandStarting $event): void
     {
+        // Opens a trace of its own, so everything the command logs, queries
+        // or throws is grouped under it rather than left unattached.
+        $this->trace->restart();
+
         $this->startedAt[$this->key($event->command)] = microtime(true);
     }
 

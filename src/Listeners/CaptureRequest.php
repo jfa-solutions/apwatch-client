@@ -3,12 +3,16 @@
 namespace Apwatch\Client\Listeners;
 
 use Apwatch\Client\EventBuffer;
+use Apwatch\Client\Support\BodyCapture;
 use Apwatch\Client\Support\InputRedactor;
+use Apwatch\Client\Support\StatusList;
 use Apwatch\Client\UserContext;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class CaptureRequest
@@ -52,6 +56,10 @@ class CaptureRequest
             $payload['input'] = $this->redactedInput($request);
         }
 
+        if ($this->shouldCaptureResponse($response->getStatusCode())) {
+            $payload['response'] = $this->capturedResponse($response);
+        }
+
         // Set before the event is pushed, but read at flush time, so it lands
         // on every event this request produced — not only on this one.
         if (config('apwatch.capture.user')) {
@@ -63,36 +71,41 @@ class CaptureRequest
         return $response;
     }
 
-    /**
-     * Statuses are configured as a comma-separated mix of classes ('4xx') and
-     * exact codes ('422'), so an app can capture everything that failed
-     * validation without paying for every other error.
-     */
     private function shouldCaptureInput(int $status): bool
     {
-        if (! config('apwatch.capture.request_input')) {
-            return false;
-        }
+        return (bool) config('apwatch.capture.request_input')
+            && StatusList::matches((string) config('apwatch.request_input.statuses', ''), $status);
+    }
 
-        $configured = (string) config('apwatch.request_input.statuses', '');
+    private function shouldCaptureResponse(int $status): bool
+    {
+        return (bool) config('apwatch.capture.request_response')
+            && StatusList::matches((string) config('apwatch.response.statuses', ''), $status);
+    }
 
-        foreach (explode(',', $configured) as $token) {
-            $token = strtolower(trim($token));
+    /**
+     * What the app actually answered. Streamed and file responses are
+     * reported as skipped rather than read: their content only exists while
+     * it is being sent, and forcing it into memory here would defeat the
+     * point of streaming it.
+     *
+     * @return array<string, mixed>
+     */
+    private function capturedResponse(Response $response): array
+    {
+        $body = ($response instanceof StreamedResponse || $response instanceof BinaryFileResponse)
+            ? false
+            : $response->getContent();
 
-            if ($token === '') {
-                continue;
-            }
+        $capture = new BodyCapture(
+            InputRedactor::fromConfig(
+                (int) config('apwatch.response.max_length'),
+                (int) config('apwatch.response.max_value_length'),
+            ),
+            (int) config('apwatch.response.max_length'),
+        );
 
-            $matches = str_ends_with($token, 'xx')
-                ? (int) substr($token, 0, 1) === intdiv($status, 100)
-                : (int) $token === $status;
-
-            if ($matches) {
-                return true;
-            }
-        }
-
-        return false;
+        return $capture->capture($body, (string) $response->headers->get('Content-Type', ''));
     }
 
     /**
@@ -100,8 +113,7 @@ class CaptureRequest
      */
     private function redactedInput(Request $request): array
     {
-        $redactor = new InputRedactor(
-            (array) config('apwatch.request_input.redact', []),
+        $redactor = InputRedactor::fromConfig(
             (int) config('apwatch.request_input.max_length'),
             (int) config('apwatch.request_input.max_value_length'),
         );

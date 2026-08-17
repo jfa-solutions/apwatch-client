@@ -26,6 +26,22 @@ class InputRedactor
     ) {}
 
     /**
+     * Builds a redactor over the app-wide key list. The list lives under
+     * 'apwatch.redact' because it now guards responses and outgoing http
+     * calls too, not just request input — the older 'request_input.redact'
+     * location is still honoured so an app with a published config from
+     * before that move keeps working.
+     */
+    public static function fromConfig(int $maxLength, int $maxValueLength): self
+    {
+        return new self(
+            (array) (config('apwatch.redact') ?? config('apwatch.request_input.redact', [])),
+            $maxLength,
+            $maxValueLength,
+        );
+    }
+
+    /**
      * @param  array<string, mixed>  $input
      * @return array<string, mixed>
      */

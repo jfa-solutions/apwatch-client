@@ -26,6 +26,7 @@ use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
 
@@ -37,6 +38,7 @@ class ApwatchServiceProvider extends ServiceProvider
 
         $this->app->singleton(EventBuffer::class);
         $this->app->singleton(UserContext::class);
+        $this->app->singleton(TraceContext::class);
         $this->app->singleton(Dispatcher::class);
     }
 
@@ -83,6 +85,14 @@ class ApwatchServiceProvider extends ServiceProvider
         }
 
         if (config('apwatch.capture.jobs')) {
+            // Rides the current trace along on the queued job's payload.
+            // This is the only hand-off point available: the dispatching
+            // process and the worker share nothing else, so without it a
+            // job could never be linked back to the request that queued it.
+            Queue::createPayloadUsing(fn (): array => [
+                'apwatch_trace_id' => $this->app->make(TraceContext::class)->id(),
+            ]);
+
             // Resolved once and shared across all three listeners (rather
             // than a class-string per event) so the same CaptureJob
             // instance tracks a job's start time between "processing" and
